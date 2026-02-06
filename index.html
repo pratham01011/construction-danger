@@ -53,6 +53,19 @@
 
   <div class="title">🚧 Construction Danger</div>
   <div id="map"></div>
+<select id="severity" style="
+  position: absolute;
+  bottom: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px;
+  border-radius: 6px;
+  z-index: 1000;
+">
+  <option value="low">🟢 Low</option>
+  <option value="medium">🟡 Medium</option>
+  <option value="high">🔴 High</option>
+</select>
 
   <button class="report-btn" onclick="reportConstruction()">
     🚧 Report Construction
@@ -111,15 +124,18 @@
 
     // ➕ Report construction
     function reportConstruction() {
-      const expiresAt = Date.now() + 45 * 60 * 1000;
+  const severity = document.getElementById("severity").value;
+  const expiresAt = Date.now() + 45 * 60 * 1000;
 
-      db.collection("reports").add({
-        lat: userLat,
-        lng: userLng,
-        createdAt: Date.now(),
-        expiresAt: expiresAt
-      });
-    }
+  db.collection("reports").add({
+    lat: userLat,
+    lng: userLng,
+    severity: severity,
+    createdAt: Date.now(),
+    expiresAt: expiresAt
+  });
+}
+
 
     // 🔄 Load reports in real time
     function loadReports() {
@@ -136,14 +152,20 @@
           // Prevent duplicate markers
           if (markers[doc.id]) return;
 
-          const marker = L.marker([data.lat, data.lng], {
-            icon: L.icon({
-              iconUrl: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
-              iconSize: [30, 30]
-            })
-          })
-            .addTo(map)
-            .bindPopup("🚧 Construction reported");
+          const colors = {
+  low: "green",
+  medium: "orange",
+  high: "red"
+};
+
+const marker = L.circleMarker([data.lat, data.lng], {
+  radius: 10,
+  color: colors[data.severity],
+  fillColor: colors[data.severity],
+  fillOpacity: 0.8
+})
+  .addTo(map)
+  .bindPopup(`🚧 Construction (${data.severity.toUpperCase()})`);
 
           markers[doc.id] = marker;
         });
