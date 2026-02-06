@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Construction Danger</title>
+
+  <!-- Leaflet CSS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+    }
+
+    #map {
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .title {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: black;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 6px;
+      z-index: 1000;
+    }
+
+    .report-btn {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 12px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      background: black;
+      color: white;
+      cursor: pointer;
+      z-index: 1000;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="title">🚧 Construction Danger</div>
+  <div id="map"></div>
+
+  <button class="report-btn" onclick="reportConstruction()">
+    🚧 Report Construction
+  </button>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <script>
+    // 🔥 FIREBASE CONFIG (REPLACE WITH YOUR OWN)
+    const firebaseConfig = {
+      apiKey: "AIzaSyAL-zIzjfQCjmQ1L48EFYtld3pmUxOq3Zk",
+  authDomain: "construction-danger.firebaseapp.com",
+  projectId: "construction-danger",
+  storageBucket: "construction-danger.firebasestorage.app",
+  messagingSenderId: "384364130725",
+  appId: "1:384364130725:web:61838b4d1ffceeaac8384c",
+  measurementId: "G-K9LKEX9Q49"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    let map;
+    let userLat, userLng;
+    let markers = {};
+
+    // 📍 Get user location
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        userLat = position.coords.latitude;
+        userLng = position.coords.longitude;
+
+        map = L.map("map").setView([userLat, userLng], 14);
+
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+          attribution: "© OpenStreetMap contributors"
+        }).addTo(map);
+
+        L.marker([userLat, userLng])
+          .addTo(map)
+          .bindPopup("You are here")
+          .openPopup();
+
+        loadReports();
+      },
+      () => {
+        alert("Location access denied");
+      }
+    );
+
+    // ➕ Report construction
+    function reportConstruction() {
+      const expiresAt = Date.now() + 45 * 60 * 1000;
+
+      db.collection("reports").add({
+        lat: userLat,
+        lng: userLng,
+        createdAt: Date.now(),
+        expiresAt: expiresAt
+      });
+    }
+
+    // 🔄 Load reports in real time
+    function loadReports() {
+      db.collection("reports").onSnapshot((snapshot) => {
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+
+          // Delete expired reports
+          if (Date.now() > data.expiresAt) {
+            doc.ref.delete();
+            return;
+          }
+
+          // Prevent duplicate markers
+          if (markers[doc.id]) return;
+
+          const marker = L.marker([data.lat, data.lng], {
+            icon: L.icon({
+              iconUrl: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
+              iconSize: [30, 30]
+            })
+          })
+            .addTo(map)
+            .bindPopup("🚧 Construction reported");
+
+          markers[doc.id] = marker;
+        });
+      });
+    }
+  </script>
+
+</body>
+</html>
