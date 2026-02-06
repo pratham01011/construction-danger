@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <title>Construction Danger</title>
 
-  <!-- Leaflet CSS -->
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -74,15 +73,11 @@
     🚧 Report Construction
   </button>
 
-  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
   <script>
-    // 🔥 Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyAL-zIzjfQCjmQ1L48EFYtld3pmUxOq3Zk",
       authDomain: "construction-danger.firebaseapp.com",
@@ -96,7 +91,6 @@
     const db = firebase.firestore();
 
     let map;
-    let userLat, userLng;
     let selectedLatLng = null;
     let markers = {};
     let lastReportTime = 0;
@@ -107,24 +101,21 @@
       high: "red"
     };
 
-    // 📍 Get user location
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        userLat = position.coords.latitude;
-        userLng = position.coords.longitude;
+        const { latitude, longitude } = position.coords;
 
-        map = L.map("map").setView([userLat, userLng], 14);
+        map = L.map("map").setView([latitude, longitude], 14);
 
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
           maxZoom: 19,
           attribution: "© OpenStreetMap contributors"
         }).addTo(map);
 
-        L.marker([userLat, userLng])
+        L.marker([latitude, longitude])
           .addTo(map)
           .bindPopup("You are here");
 
-        // Select location by tapping map
         map.on("click", (e) => {
           selectedLatLng = e.latlng;
           L.popup()
@@ -138,7 +129,6 @@
       () => alert("Location access denied")
     );
 
-    // ➕ Report construction
     function reportConstruction() {
       if (!selectedLatLng) {
         alert("Tap on the map to select danger location");
@@ -166,41 +156,63 @@
       selectedLatLng = null;
     }
 
-    // 🔄 Real-time updates
     function loadReports() {
-      db.collection("reports").onSnapshot((snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-          const doc = change.doc;
+      // Initial load
+      db.collection("reports").get().then((snapshot) => {
+        snapshot.forEach((doc) => {
           const data = doc.data();
-
-          // Remove expired or deleted
-          if (change.type === "removed") {
-            if (markers[doc.id]) {
-              map.removeLayer(markers[doc.id]);
-              delete markers[doc.id];
-            }
-            return;
-          }
 
           if (Date.now() > data.expiresAt) {
             doc.ref.delete();
             return;
           }
 
-          if (change.type === "added") {
-            const marker = L.circleMarker([data.lat, data.lng], {
-              radius: 10,
-              color: colors[data.severity],
-              fillColor: colors[data.severity],
-              fillOpacity: 0.8
-            })
-              .addTo(map)
-              .bindPopup(`🚧 Construction (${data.severity.toUpperCase()})`);
+          addMarker(doc.id, data);
+        });
+      });
 
-            markers[doc.id] = marker;
+      // Realtime updates
+      db.collection("reports").onSnapshot((snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+          const doc = change.doc;
+          const data = doc.data();
+
+          if (change.type === "removed") {
+            removeMarker(doc.id);
+            return;
+          }
+
+          if (change.type === "added") {
+            if (Date.now() > data.expiresAt) {
+              doc.ref.delete();
+              return;
+            }
+            addMarker(doc.id, data);
           }
         });
       });
+    }
+
+    function addMarker(id, data) {
+      if (markers[id]) return;
+
+      const marker = L.circleMarker([data.lat, data.lng], {
+        radius: 10,
+        color: colors[data.severity],
+        fillColor: colors[data.severity],
+        fillOpacity: 0.8
+      })
+        .addTo(map)
+        .bindPopup(`🚧 Construction (${data.severity.toUpperCase()})`);
+
+      markers[id] = marker;
+    }
+
+    function removeMarker(id) {
+      if (markers[id]) {
+        map.removeLayer(markers[id]);
+        delete markers[id];
+      }
     }
   </script>
 </body>
