@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Construction Danger</title>
 
   <!-- Leaflet CSS -->
@@ -47,25 +47,28 @@
       cursor: pointer;
       z-index: 1000;
     }
+
+    #severity {
+      position: absolute;
+      bottom: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 8px;
+      border-radius: 6px;
+      z-index: 1000;
+    }
   </style>
 </head>
-<body>
 
+<body>
   <div class="title">🚧 Construction Danger</div>
   <div id="map"></div>
-<select id="severity" style="
-  position: absolute;
-  bottom: 70px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 8px;
-  border-radius: 6px;
-  z-index: 1000;
-">
-  <option value="low">🟢 Low</option>
-  <option value="medium">🟡 Medium</option>
-  <option value="high">🔴 High</option>
-</select>
+
+  <select id="severity">
+    <option value="low">🟢 Low</option>
+    <option value="medium">🟡 Medium</option>
+    <option value="high">🔴 High</option>
+  </select>
 
   <button class="report-btn" onclick="reportConstruction()">
     🚧 Report Construction
@@ -79,15 +82,14 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
   <script>
-    // 🔥 FIREBASE CONFIG (REPLACE WITH YOUR OWN)
+    // 🔥 Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyAL-zIzjfQCjmQ1L48EFYtld3pmUxOq3Zk",
-  authDomain: "construction-danger.firebaseapp.com",
-  projectId: "construction-danger",
-  storageBucket: "construction-danger.firebasestorage.app",
-  messagingSenderId: "384364130725",
-  appId: "1:384364130725:web:61838b4d1ffceeaac8384c",
-  measurementId: "G-K9LKEX9Q49"
+      authDomain: "construction-danger.firebaseapp.com",
+      projectId: "construction-danger",
+      storageBucket: "construction-danger.firebasestorage.app",
+      messagingSenderId: "384364130725",
+      appId: "1:384364130725:web:61838b4d1ffceeaac8384c"
     };
 
     firebase.initializeApp(firebaseConfig);
@@ -95,7 +97,15 @@
 
     let map;
     let userLat, userLng;
+    let selectedLatLng = null;
     let markers = {};
+    let lastReportTime = 0;
+
+    const colors = {
+      low: "green",
+      medium: "orange",
+      high: "red"
+    };
 
     // 📍 Get user location
     navigator.geolocation.getCurrentPosition(
@@ -112,66 +122,86 @@
 
         L.marker([userLat, userLng])
           .addTo(map)
-          .bindPopup("You are here")
-          .openPopup();
+          .bindPopup("You are here");
+
+        // Select location by tapping map
+        map.on("click", (e) => {
+          selectedLatLng = e.latlng;
+          L.popup()
+            .setLatLng(e.latlng)
+            .setContent("📍 Danger location selected")
+            .openOn(map);
+        });
 
         loadReports();
       },
-      () => {
-        alert("Location access denied");
-      }
+      () => alert("Location access denied")
     );
 
     // ➕ Report construction
     function reportConstruction() {
-  const severity = document.getElementById("severity").value;
-  const expiresAt = Date.now() + 45 * 60 * 1000;
+      if (!selectedLatLng) {
+        alert("Tap on the map to select danger location");
+        return;
+      }
 
-  db.collection("reports").add({
-    lat: userLat,
-    lng: userLng,
-    severity: severity,
-    createdAt: Date.now(),
-    expiresAt: expiresAt
-  });
-}
+      if (Date.now() - lastReportTime < 60000) {
+        alert("Wait 1 minute before reporting again");
+        return;
+      }
 
+      lastReportTime = Date.now();
 
-    // 🔄 Load reports in real time
+      const severity = document.getElementById("severity").value;
+      const expiresAt = Date.now() + 45 * 60 * 1000;
+
+      db.collection("reports").add({
+        lat: selectedLatLng.lat,
+        lng: selectedLatLng.lng,
+        severity,
+        createdAt: Date.now(),
+        expiresAt
+      });
+
+      selectedLatLng = null;
+    }
+
+    // 🔄 Real-time updates
     function loadReports() {
       db.collection("reports").onSnapshot((snapshot) => {
-        snapshot.forEach((doc) => {
+        snapshot.docChanges().forEach((change) => {
+          const doc = change.doc;
           const data = doc.data();
 
-          // Delete expired reports
+          // Remove expired or deleted
+          if (change.type === "removed") {
+            if (markers[doc.id]) {
+              map.removeLayer(markers[doc.id]);
+              delete markers[doc.id];
+            }
+            return;
+          }
+
           if (Date.now() > data.expiresAt) {
             doc.ref.delete();
             return;
           }
 
-          // Prevent duplicate markers
-          if (markers[doc.id]) return;
+          if (change.type === "added") {
+            const marker = L.circleMarker([data.lat, data.lng], {
+              radius: 10,
+              color: colors[data.severity],
+              fillColor: colors[data.severity],
+              fillOpacity: 0.8
+            })
+              .addTo(map)
+              .bindPopup(`🚧 Construction (${data.severity.toUpperCase()})`);
 
-          const colors = {
-  low: "green",
-  medium: "orange",
-  high: "red"
-};
-
-const marker = L.circleMarker([data.lat, data.lng], {
-  radius: 10,
-  color: colors[data.severity],
-  fillColor: colors[data.severity],
-  fillOpacity: 0.8
-})
-  .addTo(map)
-  .bindPopup(`🚧 Construction (${data.severity.toUpperCase()})`);
-
-          markers[doc.id] = marker;
+            markers[doc.id] = marker;
+          }
         });
       });
     }
   </script>
-
 </body>
 </html>
