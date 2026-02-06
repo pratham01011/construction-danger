@@ -77,143 +77,138 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
-  <script>
-    const firebaseConfig = {
-      apiKey: "AIzaSyAL-zIzjfQCjmQ1L48EFYtld3pmUxOq3Zk",
-      authDomain: "construction-danger.firebaseapp.com",
-      projectId: "construction-danger",
-      storageBucket: "construction-danger.firebasestorage.app",
-      messagingSenderId: "384364130725",
-      appId: "1:384364130725:web:61838b4d1ffceeaac8384c"
-    };
+ <script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyAL-zIzjfQCjmQ1L48EFYtld3pmUxOq3Zk",
+    authDomain: "construction-danger.firebaseapp.com",
+    projectId: "construction-danger",
+    storageBucket: "construction-danger.firebasestorage.app",
+    messagingSenderId: "384364130725",
+    appId: "1:384364130725:web:61838b4d1ffceeaac8384c"
+  };
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
 
-    let map;
-    let selectedLatLng = null;
-    let markers = {};
-    let lastReportTime = 0;
+  let map;
+  let selectedLatLng = null;
+  let markers = {};
+  let lastReportTime = 0;
 
-    const colors = {
-      low: "green",
-      medium: "orange",
-      high: "red"
-    };
+  const colors = {
+    low: "green",
+    medium: "orange",
+    high: "red"
+  };
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const { latitude, longitude } = position.coords;
 
-        map = L.map("map").setView([latitude, longitude], 14);
+      map = L.map("map").setView([latitude, longitude], 14);
 
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          maxZoom: 19,
-          attribution: "© OpenStreetMap contributors"
-        }).addTo(map);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "© OpenStreetMap contributors"
+      }).addTo(map);
 
-        L.marker([latitude, longitude])
-          .addTo(map)
-          .bindPopup("You are here");
+      L.marker([latitude, longitude])
+        .addTo(map)
+        .bindPopup("You are here");
 
-        map.on("click", (e) => {
-          selectedLatLng = e.latlng;
-          L.popup()
-            .setLatLng(e.latlng)
-            .setContent("📍 Danger location selected")
-            .openOn(map);
-        });
-
-        loadReports();
-      },
-      () => alert("Location access denied")
-    );
-
-    function reportConstruction() {
-      if (!selectedLatLng) {
-        alert("Tap on the map to select danger location");
-        return;
-      }
-
-      if (Date.now() - lastReportTime < 60000) {
-        alert("Wait 1 minute before reporting again");
-        return;
-      }
-
-      lastReportTime = Date.now();
-
-      const severity = document.getElementById("severity").value;
-      const expiresAt = Date.now() + 45 * 60 * 1000;
-
-      db.collection("reports").add({
-        lat: selectedLatLng.lat,
-        lng: selectedLatLng.lng,
-        severity,
-        createdAt: Date.now(),
-        expiresAt
+      map.on("click", (e) => {
+        selectedLatLng = e.latlng;
+        L.popup()
+          .setLatLng(e.latlng)
+          .setContent("📍 Danger location selected")
+          .openOn(map);
       });
 
-      selectedLatLng = null;
+      loadReports();
+    },
+    () => alert("Location access denied")
+  );
+
+  function reportConstruction() {
+    if (!selectedLatLng) {
+      alert("Tap on the map to select danger location");
+      return;
     }
 
-    function loadReports() {
-      // Initial load
-      db.collection("reports").get().then((snapshot) => {
-        snapshot.forEach((doc) => {
-          const data = doc.data();
+    if (Date.now() - lastReportTime < 60000) {
+      alert("Wait 1 minute before reporting again");
+      return;
+    }
 
-          if (Date.now() > data.expiresAt) {
-            doc.ref.delete();
-            return;
-          }
+    lastReportTime = Date.now();
 
-          addMarker(doc.id, data);
-        });
-      });
+    const severity = document.getElementById("severity").value;
+    const expiresAt = Date.now() + 45 * 60 * 1000;
 
-      // Realtime updates
-      db.collection("reports").onSnapshot((snapshot) => {
+    db.collection("reports").add({
+      lat: selectedLatLng.lat,
+      lng: selectedLatLng.lng,
+      severity,
+      createdAt: Date.now(),
+      expiresAt
+    });
+
+    selectedLatLng = null;
+  }
+
+  function loadReports() {
+    db.collection("reports")
+      .where("expiresAt", ">", Date.now())
+      .onSnapshot((snapshot) => {
         snapshot.docChanges().forEach((change) => {
-          const doc = change.doc;
-          const data = doc.data();
+          const id = change.doc.id;
+          const data = change.doc.data();
 
           if (change.type === "removed") {
-            removeMarker(doc.id);
-            return;
+            removeMarker(id);
           }
 
           if (change.type === "added") {
-            if (Date.now() > data.expiresAt) {
-              doc.ref.delete();
-              return;
-            }
-            addMarker(doc.id, data);
+            addMarker(id, data);
           }
         });
       });
+  }
+
+  function addMarker(id, data) {
+    if (markers[id]) return;
+
+    const marker = L.circleMarker([data.lat, data.lng], {
+      radius: 10,
+      color: colors[data.severity],
+      fillColor: colors[data.severity],
+      fillOpacity: 0.8
+    })
+      .addTo(map)
+      .bindPopup(`🚧 Construction (${data.severity.toUpperCase()})`);
+
+    marker.expiresAt = data.expiresAt;
+    markers[id] = marker;
+  }
+
+  function removeMarker(id) {
+    if (markers[id]) {
+      map.removeLayer(markers[id]);
+      delete markers[id];
     }
+  }
 
-    function addMarker(id, data) {
-      if (markers[id]) return;
-
-      const marker = L.circleMarker([data.lat, data.lng], {
-        radius: 10,
-        color: colors[data.severity],
-        fillColor: colors[data.severity],
-        fillOpacity: 0.8
-      })
-        .addTo(map)
-        .bindPopup(`🚧 Construction (${data.severity.toUpperCase()})`);
-
-      markers[id] = marker;
-    }
-
-    function removeMarker(id) {
-      if (markers[id]) {
+  // UI cleanup only (NO DB TOUCHING)
+  setInterval(() => {
+    const now = Date.now();
+    Object.keys(markers).forEach((id) => {
+      if (markers[id].expiresAt < now) {
         map.removeLayer(markers[id]);
         delete markers[id];
       }
-    }
-  </script>
+    });
+  }, 60000);
+</script>
+
 </body>
 </html>
